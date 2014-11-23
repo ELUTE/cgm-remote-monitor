@@ -40,6 +40,7 @@ function getBrowserSettings(storage) {
 			"alarmHigh": storage.get("alarmHigh"),
 			"alarmLow": storage.get("alarmLow"),
 			"nightMode": storage.get("nightMode"),
+			"retroLookback": storage.get("retroLookback"),
 			"customTitle": storage.get("customTitle"),
 			"theme": storage.get("theme"),
 			"timeFormat": storage.get("timeFormat")
@@ -61,10 +62,14 @@ function getBrowserSettings(storage) {
 		json.nightMode = setDefault(json.nightMode, defaultSettings.nightMode);
 		$("#nightmode-browser").prop("checked", json.nightMode);
 
+		if (typeof json.retroLookback !== 'undefined') {
+			$("input#retroLookback").prop("value", json.retroLookback);
+		}
+
 		if (json.customTitle) {
 			$("h1.customTitle").text(json.customTitle);
 			$("input#customTitle").prop("value", json.customTitle);
-			document.title = "Nightscout: " + json.customTitle;
+			document.title = json.customTitle + " - Nightscout";
 		}
 
         if (json.theme == "colors") {
@@ -130,6 +135,7 @@ function storeInBrowser(json, storage) {
 	} else {
 		storage.set("nightMode", false)
 	}
+	if (json.retroLookback) storage.set("retroLookback", json.retroLookback);
 	if (json.customTitle) storage.set("customTitle", json.customTitle);
     if (json.theme) storage.set("theme", json.theme);
     event.preventDefault();
@@ -392,6 +398,7 @@ $("input#save").click(function() {
 		"alarmHigh": $("#alarmhigh-browser").prop("checked"),
 		"alarmLow": $("#alarmlow-browser").prop("checked"),
 		"nightMode": $("#nightmode-browser").prop("checked"),
+		"retroLookback": $("input#retroLookback").prop("value"),
 		"customTitle": $("input#customTitle").prop("value"),
         "theme": $("input:radio[name=theme-browser]:checked").val(),
 		"timeFormat": $("input:radio[name=timeformat-browser]:checked").val()

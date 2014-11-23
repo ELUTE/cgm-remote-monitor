@@ -20,6 +20,9 @@
                 <a id="treatmentDrawerToggle" class="tip" original-title="Treatments" href="#"><i class="icon-plus"></i></a>
             </div>
             <h1 class="customTitle">Nightscout</h1>
+            <div id="iob-cob">
+                <h1 class="iobCob">IOB: --  COB: --</h1>
+            </div>
         </div>
         <div id="notification">
             <a href="#"><span></span><i class="icon-cancel-circled"></i></a>
@@ -33,6 +36,7 @@
                 <div class="bgStatus current">
                     <div id="noButton">
                         <span class="currentBG">---</span>
+                        <span class="currentDelta">--</span>
                         <span class="currentDirection">-</span>
                     </div>
                     <div id="bgButton" hidden="true">
@@ -83,6 +87,10 @@
                     <dl class="toggle">
                         <dt>Night Mode <a class="tip" original-title="When enabled the page will be dimmed from 10pm - 6am."><i class="icon-help-circled"></i></a></dt>
                         <dd><input type="checkbox" name="nightmode-browser" id="nightmode-browser" /><label for="nightmode-browser">Enable</label></dd>
+                    </dl>
+                    <dl>
+                        <dt>Retrospective lookback <a class="tip" original-title="Show blue retrospective prediction line based on prediction from this many minutes prior."><i class="icon-help-circled"></i></a></dt>
+                        <dd><input type="text" id="retroLookback" value="0" /></dd>
                     </dl>
                     <dl>
                         <dt>Custom Title</dt>
