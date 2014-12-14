@@ -2,6 +2,7 @@
     "use strict";
 
     var latestSGV,
+        prevSGV,
         errorCode,
         treatments,
         profile,
@@ -138,7 +139,10 @@
 
     function rawIsigToRawBg(unfiltered, scale, intercept, slope, filtered, sgv) {
         if (slope == 0 || unfiltered == 0 || scale ==0  || slope == null || unfiltered == null || scale == null) return 0;
-        else if (filtered == 0 || filtered == null || sgv == 0 || sgv == null) return scale*(unfiltered-intercept)/slope;
+        else if (filtered == 0 || filtered == null || sgv < 30 || sgv == null) {
+            console.info("Skipping ratio adjustment for SGV " + sgv);
+            return scale*(unfiltered-intercept)/slope;
+        }
         else {
             var ratio = scale*(filtered-intercept)/slope / sgv;
             return scale*(unfiltered-intercept)/slope / ratio;
@@ -314,16 +318,17 @@
             if (nowData.length > lookback) {
                 var time = new Date(brushExtent[1] - predict_hr * SIXTY_MINS_IN_MS);
                 if (retroLookback > 0 && retroPredict) {
-                    var retroPrediction = retroPredictBgs(sgvData, treatments.slice(treatments.length-200, treatments.length), profile, retroLookback, lookback);
+                    var retroPrediction = retroPredictBgs(sgvData, treatments, profile, retroLookback, lookback);
                     focusData = focusData.concat(retroPrediction);
                 }
-                var prediction = predictDIYPS(nowData, treatments.slice(treatments.length-200, treatments.length), profile, time, lookback);
+                var prediction = predictDIYPS(nowData, treatments, profile, time, lookback);
                 focusData = focusData.concat(prediction);
                 var focusPoint = nowData[nowData.length - 1];
+                var prevfocusPoint = nowData[nowData.length - 2];
 
-                var iTotal = iobTotal(treatments.slice(treatments.length-200, treatments.length), time);
+                var iTotal = iobTotal(treatments, time);
                 var iob = Math.round(iTotal.iob*10)/10;
-                var cTotal = cobTotal(treatments.slice(treatments.length-200, treatments.length), time);
+                var cTotal = cobTotal(treatments, time);
                 var cob = Math.round(cTotal.cob);
 
                 var tick = 5;
@@ -331,7 +336,9 @@
                 var rawCarbImpact = cTotal.rawCarbImpact;
                 var cImpact = carbImpact(rawCarbImpact, insulinImpact);
                 var totalImpact = Math.round((cImpact.totalImpact*tick)*10)/10;
-                $("h1.iobCob").text("IOB: " + iob + "U,  COB: " + cob + "g, BG Impact: " + totalImpact +"mg/dL/5m");
+                if (totalImpact > 0) totalImpact = "+" + totalImpact;
+
+                $("h1.iobCob").text("IOB " + iob + "U,  COB " + cob + "g");
 
                 //in this case the SGV is scaled
                 if (focusPoint.y < 40)
@@ -341,13 +348,28 @@
                 else
                     $('.container .currentBG').text(focusPoint.sgv);
 
+                var retroDelta = scaleBg(focusPoint.y) - scaleBg(prevfocusPoint.y);
+
+                if (retroDelta > 0) {
+                    retroDelta = "+" + retroDelta;
+                }
+
+                if (browserSettings.units == "mmol") {
+                    retroDelta = retroDelta.toFixed(1) + " mmol/L";
+                } else {
+                    retroDelta += " mg/dL";
+                }
+
                 $('.container .currentBG').css('text-decoration','line-through');
-                $('.container .currentDirection')
-                    .html(focusPoint.direction)
+                $('.container .currentDetails')
+                    .text(retroDelta + ", BGI: " + totalImpact)
+                    .css('text-decoration','line-through');
+                $('.container .currentDirection').html(focusPoint.direction)
             } else {
                 $('.container .currentBG')
                     .text("---")
                     .css('text-decoration','');
+                $('.container .currentDetails').text('');
             }
             $('#currentTime')
                 .text(formatTime(new Date(brushExtent[1] - predict_hr * SIXTY_MINS_IN_MS)))
@@ -356,6 +378,7 @@
             $('#lastEntry').text("RETRO").removeClass('current');
 
             $('.container #noButton .currentBG').css({color: 'grey'});
+            $('.container #noButton .currentDetails').css({color: 'grey'});
             $('.container #noButton .currentDirection').css({color: 'grey'});
 
         } else {
@@ -370,22 +393,24 @@
             var dateTime = new Date(now);
             nowDate = dateTime;
             if (retroLookback > 0) {
-                var retroPrediction = retroPredictBgs(sgvData, treatments.slice(treatments.length-200, treatments.length), profile, retroLookback, lookback);
+                var retroPrediction = retroPredictBgs(sgvData, treatments, profile, retroLookback, lookback);
                 focusData = focusData.concat(retroPrediction);
             }
             var prediction = predictDIYPS(nowData, treatments, profile, nowDate, lookback);
             focusData = focusData.concat(prediction);
 
-            var iTotal = iobTotal(treatments.slice(treatments.length-200, treatments.length), time);
+            var iTotal = iobTotal(treatments, time);
             var iob = Math.round(iTotal.iob*10)/10;
-            var cTotal = cobTotal(treatments.slice(treatments.length-200, treatments.length), time);
+            var cTotal = cobTotal(treatments, time);
             var cob = Math.round(cTotal.cob);
             var tick = 5;
             var insulinImpact = iTotal.activity;
             var rawCarbImpact = cTotal.rawCarbImpact;
             var cImpact = carbImpact(rawCarbImpact, insulinImpact);
             var totalImpact = Math.round((cImpact.totalImpact*tick)*10)/10;
-            $("h1.iobCob").text("IOB: " + iob + "U,  COB: " + cob + "g, BG Impact: " + totalImpact +"mg/dL/5m");
+            if (totalImpact > 0) totalImpact = "+" + totalImpact;
+
+            $("h1.iobCob").text("IOB " + iob + "U,  COB " + cob + "g");
 
             $('#currentTime')
                 .text(formatTime(dateTime))
@@ -413,6 +438,8 @@
 
                 $('.container .currentBG').html(errorDisplay)
                     .css('text-decoration', '');
+                $('.container .currentDetails').text('')
+                    .css('text-decoration', '');
                 $('.container .currentDirection').html('✖');
 
                 var color = sgvToColor(errorCode);
@@ -431,26 +458,36 @@
                     $('.container .currentBG').text('HIGH');
                 else
                     $('.container .currentBG').text(scaleBg(latestSGV.y));
-                    var bgDelta = scaleBg(latestSGV.y-sgvData[sgvData.length-2].y);
-                    if (bgDelta < 0) {
-                        var bgDeltaString = bgDelta;
-                    }
-                    else {
-                        var bgDeltaString = "+" + bgDelta;
-                    }
-                    $('.container .currentDelta').text(bgDeltaString);
+
+                var bgDelta = scaleBg(latestSGV.y) - scaleBg(prevSGV.y);
+
+                if (bgDelta > 0) {
+                    bgDelta = "+" + bgDelta;
+                }
+
+                if (browserSettings.units == "mmol") {
+                    bgDelta = bgDelta.toFixed(1) + " mmol/L";
+                } else {
+                    bgDelta += " mg/dL";
+                }
 
                 $('.container .currentBG').css('text-decoration', '');
-                $('.container .currentDirection')
-                    .html(latestSGV.direction);
+                $('.container .currentDetails')
+                    .text(bgDelta + ", BGI: " + totalImpact)
+                    .css('text-decoration','');
+                $('.container .currentDirection').html(latestSGV.direction);
 
                 var color = sgvToColor(latestSGV.y);
                 $('.container #noButton .currentBG').css({color: color});
                 $('.container #noButton .currentDirection').css({color: color});
 
-                var deltaColor = deltaToColor(bgDelta);
-                $('.container #noButton .currentDelta').css({color: deltaColor});
-                //$('.container #noButton .currentDirection').css({color: color});
+                // bgDelta and retroDelta to follow sgv color
+                // instead of Scott Leibrand's wip/iob-cob settings below
+
+                // var deltaColor = deltaToColor(bgDelta);
+                // $('.container #noButton .currentDetails').css({color: deltaColor});
+
+                $('.container #noButton .currentDetails').css({color: color});
             }
         }
 
@@ -937,6 +974,7 @@
             // change the next line so that it uses the prediction if the signal gets lost (max 1/2 hr)
             if (d[0].length) {
                 latestSGV = d[0][d[0].length - 1];
+                prevSGV = d[0][d[0].length - 2];
 
                 //TODO: alarmHigh/alarmLow probably shouldn't be here
                 if (browserSettings.alarmHigh) {
@@ -1065,7 +1103,7 @@
 
 
     $('#testAlarms').click(function(event) {
-        d3.select('.audio.alarms audio').each(function (data, i) {
+        d3.selectAll('.audio.alarms audio').each(function () {
             var audio = this;
             playAlarm(audio);
             setTimeout(function() {
@@ -1351,7 +1389,7 @@
             }
             if (i < predARDeltas.length) {
                 //bgi = bgi + (predBgDelta + predARDelta)/2;
-                bgi = bgi + ( predBgDelta*i + predARDelta*(4-i) )/4/2;
+                bgi = bgi + ( predBgDelta*i + predARDelta*(4-i) )/4;
             }
             else {
                 bgi = bgi + predBgDelta;
