@@ -92,7 +92,7 @@
       "value": "",
       "required": false
     },
-        "BRIDGE_SERVER": {
+      "BRIDGE_SERVER": {
       "description": "Share bridge - Specify if you use the US or outside US server. ENSURE bridge is in ENABLE if you want to use the share bridge". Value US or OUTSIDE,
       "value": "",
       "required": false
