@@ -3,10 +3,7 @@
 require('should');
 
 describe('Raw BG', function ( ) {
-  var rawbg = require('../lib/plugins/rawbg')({
-    settings: {}
-    , language: require('../lib/language')()
-  });
+  var rawbg = require('../lib/plugins/rawbg')();
   var sandbox = require('../lib/sandbox')();
 
   var now = Date.now();
