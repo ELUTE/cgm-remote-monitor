@@ -19,6 +19,7 @@ describe('authed REST api', function ( ) {
     this.wares = require('../lib/middleware/')(env);
     this.archive = null;
     this.app = require('express')( );
+    require('../lib/middleware/configure-request')(this.app);
     this.app.enable('api');
     var self = this;
     self.known_key = known;
@@ -38,12 +39,12 @@ describe('authed REST api', function ( ) {
     this.archive.create(creating, done);
   });
 
-  afterEach(function (done) {
-    this.archive( ).remove({ }, done);
+  afterEach(async function () {
+    await this.archive( ).deleteMany({ });
   });
 
-  after(function (done) {
-    this.archive( ).remove({ }, done);
+  after(async function () {
+    await this.archive( ).deleteMany({ });
   });
 
   it('disallow unauthorized POST', function (done) {
@@ -69,8 +70,9 @@ describe('authed REST api', function ( ) {
       .post('/entries/preview.json')
       .set('api-secret', known_key)
       .send(load('json'))
-      .expect(201)
+      .expect(200)
       .end(function (err, res) {
+        if (err) return done(err);
         res.body.should.be.instanceof(Array).and.have.lengthOf(30);
         done();
       });

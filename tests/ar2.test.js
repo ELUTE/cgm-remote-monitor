@@ -1,21 +1,16 @@
 'use strict';
 
 const should = require('should');
-const levels = require('../lib/levels');
-const fs = require('fs');
+const helper = require('./inithelper')();
 
 const FIVE_MINS = 300000;
 const SIX_MINS = 360000;
 
 describe('ar2', function ( ) {
-  var ctx = {
-    settings: {}
-    , language: require('../lib/language')(fs)
-    , levels: levels
-  };
+  var ctx = helper.getctx();
+
   ctx.ddata = require('../lib/data/ddata')();
   ctx.notifications = require('../lib/notifications')(env, ctx);
-  ctx.levels = levels;
 
   var ar2 = require('../lib/plugins/ar2')(ctx);
   var bgnow = require('../lib/plugins/bgnow')(ctx);
@@ -37,6 +32,13 @@ describe('ar2', function ( ) {
     var sbx = prepareSandbox();
     var cone = ar2.forecastCone(sbx);
     cone.length.should.equal(26);
+    cone.filter(point => point.forecastSeries === 'upper').length.should.equal(13);
+    cone.filter(point => point.forecastSeries === 'lower').length.should.equal(13);
+    for (var index = 0; index < cone.length; index += 2) {
+      cone[index].forecastMills.should.equal(cone[index + 1].forecastMills);
+      (cone[index].mills - cone[index].forecastMills).should.equal(2000);
+      (cone[index + 1].mills - cone[index + 1].forecastMills).should.equal(4000);
+    }
   });
 
   it('should plot a line if coneFactor is 0', function () {
@@ -48,6 +50,7 @@ describe('ar2', function ( ) {
     bgnow.setProperties(sbx);
     var cone = ar2.forecastCone(sbx);
     cone.length.should.equal(13);
+    cone.every(point => point.forecastSeries === 'central').should.equal(true);
   });
 
 
@@ -75,9 +78,14 @@ describe('ar2', function ( ) {
     });
     ar2.checkNotifications(sbx);
     var highest = ctx.notifications.findHighestAlarm();
-    highest.level.should.equal(levels.WARN);
+    highest.level.should.equal(helper.ctx.levels.WARN);
     highest.title.should.equal('Warning, HIGH predicted');
-    highest.message.should.equal('BG Now: 170 +20 ↗ mg/dl\nBG 15m: 206 mg/dl\nIOB: 1.25U');
+
+    var expectedMessage =
+      ctx.settings.units === 'mmol' ?
+        'BG Now: 9.4 +1.1 ↗ mmol/L\nBG 15m: 11.4 mmol/L\nIOB: 1.25U' :
+        'BG Now: 170 +20 ↗ mg/dl\nBG 15m: 206 mg/dl\nIOB: 1.25U';
+    highest.message.should.equal(expectedMessage);
 
     done();
   });
@@ -89,7 +97,7 @@ describe('ar2', function ( ) {
     var sbx = prepareSandbox();
     ar2.checkNotifications(sbx);
     var highest = ctx.notifications.findHighestAlarm();
-    highest.level.should.equal(levels.URGENT);
+    highest.level.should.equal(helper.ctx.levels.URGENT);
     highest.title.should.equal('Urgent, HIGH');
 
     done();
@@ -102,7 +110,7 @@ describe('ar2', function ( ) {
     var sbx = prepareSandbox();
     ar2.checkNotifications(sbx);
     var highest = ctx.notifications.findHighestAlarm();
-    highest.level.should.equal(levels.WARN);
+    highest.level.should.equal(helper.ctx.levels.WARN);
     highest.title.should.equal('Warning, LOW');
 
     done();
@@ -115,7 +123,7 @@ describe('ar2', function ( ) {
     var sbx = prepareSandbox();
     ar2.checkNotifications(sbx);
     var highest = ctx.notifications.findHighestAlarm();
-    highest.level.should.equal(levels.WARN);
+    highest.level.should.equal(helper.ctx.levels.WARN);
     highest.title.should.equal('Warning, LOW predicted');
 
     done();
@@ -128,7 +136,7 @@ describe('ar2', function ( ) {
     var sbx = prepareSandbox();
     ar2.checkNotifications(sbx);
     var highest = ctx.notifications.findHighestAlarm();
-    highest.level.should.equal(levels.URGENT);
+    highest.level.should.equal(helper.ctx.levels.URGENT);
     highest.title.should.equal('Urgent, LOW predicted');
 
     done();
@@ -143,7 +151,7 @@ describe('ar2', function ( ) {
     var sbx = prepareSandbox();
     ar2.checkNotifications(sbx);
     var highest = ctx.notifications.findHighestAlarm();
-    highest.level.should.equal(levels.WARN);
+    highest.level.should.equal(helper.ctx.levels.WARN);
     highest.title.should.equal('Warning, LOW predicted');
 
     done();

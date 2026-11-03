@@ -1,13 +1,12 @@
 'use strict';
 
-const _ = require('lodash');
+const deepMerge = require('../lib/utils/deepMerge');
 const should = require('should');
-const fs = require('fs');
+const helper = require('./inithelper')();
 
 describe('IOB', function() {
-  var ctx = {};
-  ctx.language = require('../lib/language')(fs);
-  ctx.settings = require('../lib/settings')();
+
+  let ctx = helper.ctx;
 
   var iob = require('../lib/plugins/iob')(ctx);
 
@@ -55,7 +54,7 @@ describe('IOB', function() {
       dia: 3,
       sens: 0};
 
-     var profile = require('../lib/profilefunctions')([profileData]);
+     var profile = require('../lib/profilefunctions')([profileData], ctx);
 
       var rightAfterBolus = iob.calcTotal(treatments, [], profile, time);
 
@@ -113,8 +112,7 @@ describe('IOB', function() {
       dia: 4,
       sens: 0};
 
-     var profile = require('../lib/profilefunctions')([profileData]);
-
+     var profile = require('../lib/profilefunctions')([profileData], ctx);
 
       var rightAfterBolus = iob.calcTotal(treatments, [], profile, time);
 
@@ -140,7 +138,7 @@ describe('IOB', function() {
 
   describe('from devicestatus', function () {
     var time = Date.now();
-    var profile = require('../lib/profilefunctions')([{ dia: 3, sens: 0 }]);
+    var profile = require('../lib/profilefunctions')([{ dia: 3, sens: 0 }], ctx);
     var treatments = [{
       mills: time - 1,
       insulin: '3.00'
@@ -175,7 +173,7 @@ describe('IOB', function() {
     });
 
     it('should fall back to treatments if openaps devicestatus is present but too stale', function() {
-      var devicestatus = [_.merge(OPENAPS_DEVICESTATUS, { mills: time - iob.RECENCY_THRESHOLD - 1, openaps: {iob: {timestamp: time - iob.RECENCY_THRESHOLD - 1} } })];
+      var devicestatus = [deepMerge(OPENAPS_DEVICESTATUS, { mills: time - iob.RECENCY_THRESHOLD - 1, openaps: {iob: {timestamp: time - iob.RECENCY_THRESHOLD - 1} } })];
       iob.calcTotal(treatments, devicestatus, profile, time).should.containEql({
         source: 'Care Portal',
         iob: treatmentIOB
@@ -183,7 +181,7 @@ describe('IOB', function() {
     });
 
     it('should return IOB data from openaps', function () {
-      var devicestatus = [_.merge(OPENAPS_DEVICESTATUS, { mills: time - 1, openaps: {iob: {timestamp: time - 1} } })];
+      var devicestatus = [deepMerge(OPENAPS_DEVICESTATUS, { mills: time - 1, openaps: {iob: {timestamp: time - 1} } })];
       iob.calcTotal(treatments, devicestatus, profile, time).should.containEql({
         iob: 0.047,
         basaliob: -0.298,
@@ -194,7 +192,7 @@ describe('IOB', function() {
     });
 
     it('should not blow up with null IOB data from openaps', function () {
-      var devicestatus = [_.merge(OPENAPS_DEVICESTATUS, { mills: time - 1, openaps: {iob: null } })];
+      var devicestatus = [deepMerge(OPENAPS_DEVICESTATUS, { mills: time - 1, openaps: {iob: null } })];
       iob.calcTotal(treatments, devicestatus, profile, time).should.containEql({
         source: 'Care Portal',
         display: '3.00'
@@ -202,7 +200,7 @@ describe('IOB', function() {
     });
 
     it('should return IOB data from openaps post AMA (an array)', function () {
-      var devicestatus = [_.merge(OPENAPS_DEVICESTATUS, { mills: time - 1, openaps: {iob: [{
+      var devicestatus = [deepMerge(OPENAPS_DEVICESTATUS, { mills: time - 1, openaps: {iob: [{
         iob: 0.047,
         basaliob: -0.298,
         activity: 0.0147,
@@ -228,7 +226,7 @@ describe('IOB', function() {
         }
       };
 
-      var devicestatus = [_.merge(LOOP_DEVICESTATUS, { mills: time - 1, loop: {iob: {timestamp: time - 1} } })];
+      var devicestatus = [deepMerge(LOOP_DEVICESTATUS, { mills: time - 1, loop: {iob: {timestamp: time - 1} } })];
       iob.calcTotal(treatments, devicestatus, profile, time).should.containEql({
         iob: 0.75,
         source: 'Loop',
@@ -238,9 +236,9 @@ describe('IOB', function() {
 
     it('should return IOB data from openaps from multiple devices', function () {
       var devicestatus = [
-        _.merge(OPENAPS_DEVICESTATUS, { mills: time - 1000, openaps: {iob: {timestamp: time - 1000} } })
-        , _.merge(OPENAPS_DEVICESTATUS, { mills: time - 1, openaps: {iob: {timestamp: time - 1} } })
-        , _.merge(OPENAPS_DEVICESTATUS, { mills: time - 20000, openaps: {iob: {timestamp: time - 20000} } })
+        deepMerge(OPENAPS_DEVICESTATUS, { mills: time - 1000, openaps: {iob: {timestamp: time - 1000} } })
+        , deepMerge(OPENAPS_DEVICESTATUS, { mills: time - 1, openaps: {iob: {timestamp: time - 1} } })
+        , deepMerge(OPENAPS_DEVICESTATUS, { mills: time - 20000, openaps: {iob: {timestamp: time - 20000} } })
       ];
       iob.calcTotal(treatments, devicestatus, profile, time).should.containEql({
         iob: 0.047,
@@ -248,6 +246,46 @@ describe('IOB', function() {
         activity: 0.0147,
         source: 'OpenAPS',
         device: 'openaps://pi1'
+      });
+    });
+
+    describe('an IOB without its own timestamp (BF-206)', function () {
+      // Fresh documents per call: deepMerge writes into its target, so the
+      // shared fixtures above carry timestamps from earlier tests.
+      function openaps (fields, iobFields) {
+        return Object.assign({ device: 'openaps://pi1'
+          , openaps: { iob: Object.assign({ iob: 0.047, basaliob: -0.298, activity: 0.0147 }, iobFields) } }, fields);
+      }
+      function loop (fields, iobFields) {
+        return Object.assign({ device: 'loop://iPhone', loop: { iob: Object.assign({ iob: 0.75 }, iobFields) } }, fields);
+      }
+
+      it('takes the device status time, not now', function () {
+        iob.fromDeviceStatus(openaps({ mills: time - 600000 })).mills.should.equal(time - 600000);
+        iob.fromDeviceStatus(loop({ created_at: new Date(time - 600000).toISOString() })).mills.should.equal(time - 600000);
+        iob.fromDeviceStatus(loop({ mills: time - 600000 }, { timestamp: 'not a time' })).mills.should.equal(time - 600000);
+      });
+
+      it('does not win over a newer timestamped OpenAPS IOB', function () {
+        var devicestatus = [
+          openaps({ mills: time - 20 * 60000 }, { iob: 9 })
+          , openaps({ mills: time - 60000 }, { timestamp: time - 60000 })
+        ];
+        iob.calcTotal(treatments, devicestatus, profile, time).should.containEql({
+          iob: 0.047,
+          source: 'OpenAPS'
+        });
+      });
+
+      it('does not win over a newer timestamped Loop IOB', function () {
+        var devicestatus = [
+          loop({ mills: time - 20 * 60000 }, { iob: 9 })
+          , loop({ mills: time - 60000 }, { timestamp: time - 60000 })
+        ];
+        iob.calcTotal(treatments, devicestatus, profile, time).should.containEql({
+          iob: 0.75,
+          source: 'Loop'
+        });
       });
     });
 

@@ -2,15 +2,13 @@
 
 var should = require('should');
 var times = require('../lib/times');
-var levels = require('../lib/levels');
+const helper = require('./inithelper')();
 
 describe('sage', function ( ) {
   var env = require('../lib/server/env')();
-  var ctx = {};
-  ctx.levels = levels;
+  var ctx = helper.getctx();
   ctx.ddata = require('../lib/data/ddata')();
   ctx.notifications = require('../lib/notifications')(env, ctx);
-  ctx.language = require('../lib/language')();
   var sage = require('../lib/plugins/sensorage')(ctx);
   var sandbox = require('../lib/sandbox')();
 
@@ -18,6 +16,51 @@ describe('sage', function ( ) {
     var sbx = require('../lib/sandbox')().serverInit(env, ctx);
     return sbx;
   }
+
+  describe('several Sensor Starts within one hour (BF-207)', function () {
+    var HOUR = times.hours(1).msecs;
+
+    function latest (now, events) {
+      var sbx = prepareSandbox();
+      sbx.time = now;
+      sbx.data.sensorTreatments = events.map(function (event) {
+        return { eventType: 'Sensor Start', mills: now - event[0], notes: event[1] };
+      });
+      return sage.findLatestTimeChange(sbx)['Sensor Start'];
+    }
+
+    it('keeps the newest of them, oldest first', function () {
+      var now = Date.now();
+      var found = latest(now, [[3 * HOUR + 10000, 'older'], [3 * HOUR + 1000, 'newer']]);
+      found.notes.should.equal('newer');
+      found.treatmentDate.should.equal(now - 3 * HOUR - 1000);
+    });
+
+    it('keeps the newest of them, newest first', function () {
+      var now = Date.now();
+      var found = latest(now, [[3 * HOUR + 1000, 'newer'], [3 * HOUR + 10000, 'older']]);
+      found.notes.should.equal('newer');
+    });
+
+    it('keeps the newest across a whole-hour boundary', function () {
+      var now = Date.now();
+      var found = latest(now, [[3 * HOUR + 2000, 'older'], [3 * HOUR - 2000, 'newer']]);
+      found.notes.should.equal('newer');
+      found.age.should.equal(2);
+    });
+  });
+
+  it('displays elapsed age correctly across the fall-back DST transition', function () {
+    var now = Date.UTC(2026, 10, 1, 16);
+    var result = sage.findLatestTimeChange({
+      time: now,
+      extendedSettings: {},
+      data: { sensorTreatments: [{ eventType: 'Sensor Start', mills: now - times.days(1).msecs }] }
+    });
+    result['Sensor Start'].days.should.equal(1);
+    result['Sensor Start'].hours.should.equal(0);
+    result['Sensor Start'].display.should.equal('1d0h');
+  });
 
   it('set a pill to the current age since start with change', function (done) {
 
@@ -152,7 +195,7 @@ describe('sage', function ( ) {
     sage.checkNotifications(sbx);
 
     var highest = ctx.notifications.findHighestAlarm('SAGE');
-    highest.level.should.equal(levels.URGENT);
+    highest.level.should.equal(ctx.levels.URGENT);
     highest.title.should.equal('Sensor age 6 days 22 hours');
     done();
   });
@@ -171,6 +214,54 @@ describe('sage', function ( ) {
 
     should.not.exist(ctx.notifications.findHighestAlarm('SAGE'));
     done();
+  });
+
+  it('show n/a when no sensor treatment has been recorded', function (done) {
+
+    var data = {
+      sensorTreatments: [ ]
+    };
+
+    var ctx = {
+      settings: {}
+      , pluginBase: {
+        updatePillText: function mockedUpdatePillText(plugin, options) {
+          options.value.should.equal('n/a ');
+          done();
+        }
+      }
+    };
+    ctx.language = require('../lib/language')();
+
+    var sbx = sandbox.clientInit(ctx, Date.now(), data);
+    sage.setProperties(sbx);
+    sage.updateVisualisation(sbx);
+
+  });
+
+  it('show the age when a sensor treatment has been recorded', function (done) {
+
+    var data = {
+      sensorTreatments: [
+        {eventType: 'Sensor Start', mills: Date.now() - times.days(3).msecs}
+      ]
+    };
+
+    var ctx = {
+      settings: {}
+      , pluginBase: {
+        updatePillText: function mockedUpdatePillText(plugin, options) {
+          options.value.should.equal('3d0h');
+          done();
+        }
+      }
+    };
+    ctx.language = require('../lib/language')();
+
+    var sbx = sandbox.clientInit(ctx, Date.now(), data);
+    sage.setProperties(sbx);
+    sage.updateVisualisation(sbx);
+
   });
 
 });
